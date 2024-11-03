@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'screens/focus_screen.dart';
 import 'screens/bookshelf_screen.dart';
 import 'screens/search_screen.dart';
@@ -25,6 +26,8 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _userId;
   bool _isLoggedIn = false;
   String selectedBookId = '';
+  final GlobalKey<FocusScreenState> _focusScreenKey =
+      GlobalKey<FocusScreenState>();
 
   @override
   void initState() {
@@ -41,19 +44,16 @@ class _HomeScreenState extends State<HomeScreen> {
       _userId = prefs.getString('User_ID');
       _isLoggedIn = _userId != null && _userId!.isNotEmpty;
 
-      // ถ้าไม่ได้ล็อกอิน ให้แสดงหน้าจอ QuotesScreen
       if (!_isLoggedIn) {
         _selectedIndex = 1;
       }
     });
   }
 
-  // ฟังก์ชันที่ให้หน้าจอเมื่อผู้ใช้ล็อกอินอยู่
   List<Widget> _loggedInOptions(String bookId) => <Widget>[
         FocusScreen(
-          initialTabIndex: _selectedIndex == 0
-              ? _initialTabIndex
-              : 0, // ถ้าไม่ใช่แท็บแรก, ให้เปิดแท็บสถิติ
+          key: _focusScreenKey,
+          initialTabIndex: _selectedIndex == 0 ? _initialTabIndex : 0,
           selectedBook: bookId.isNotEmpty ? bookId : 'default',
         ),
         BookshelfScreen(),
@@ -62,7 +62,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ProfileScreen(),
       ];
 
-  // ฟังก์ชันที่ให้หน้าจอเมื่อผู้ใช้ไม่ได้ล็อกอิน
   final List<Widget> _loggedOutOptions = <Widget>[
     SearchScreen(),
     QuotesScreen(),
@@ -70,23 +69,56 @@ class _HomeScreenState extends State<HomeScreen> {
   ];
 
   void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-      if (index == 0) {
-        _initialTabIndex = 0;
-      }
-    });
+    if (_selectedIndex == 0 &&
+        _focusScreenKey.currentState?.isRunning == true) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text(
+              'เตือน!!!',
+              style: GoogleFonts.kodchasan(
+                  color: Colors.pinkAccent, fontWeight: FontWeight.w500),
+            ),
+            content: Text(
+              'จับเวลากำลังทำงานอยู่ กรุณาหยุดจับเวลาและบันทึกข้อมูลก่อนทำรายการอื่น',
+              style: GoogleFonts.kodchasan(),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: Text(
+                  'ตกลง',
+                  style: GoogleFonts.kodchasan(color: Colors.pinkAccent),
+                ),
+              ),
+            ],
+            shape: RoundedRectangleBorder(
+              side: BorderSide(color: Colors.pinkAccent, width: 2),
+              borderRadius: BorderRadius.circular(20),
+            ),
+          );
+        },
+      );
+    } else {
+      setState(() {
+        _selectedIndex = index;
+        if (index == 0) {
+          _initialTabIndex = 0;
+        }
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // เลือกว่าจะใช้ widget ใดตามสถานะล็อกอิน
     final List<Widget> _widgetOptions =
         _isLoggedIn ? _loggedInOptions(selectedBookId) : _loggedOutOptions;
 
     return Scaffold(
-      body:
-          _widgetOptions.elementAt(_selectedIndex), // แสดงหน้าจอตามแท็บที่เลือก
+      body: _widgetOptions.elementAt(_selectedIndex),
       bottomNavigationBar: BottomNavigationBar(
         items: _isLoggedIn
             ? const <BottomNavigationBarItem>[
@@ -128,7 +160,7 @@ class _HomeScreenState extends State<HomeScreen> {
         currentIndex: _selectedIndex,
         selectedItemColor: Colors.pinkAccent[100],
         unselectedItemColor: Color.fromARGB(255, 0, 0, 0),
-        onTap: _onItemTapped, // เปลี่ยนแท็บเมื่อผู้ใช้คลิก
+        onTap: _onItemTapped,
       ),
     );
   }

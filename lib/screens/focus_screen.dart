@@ -13,18 +13,23 @@ class FocusScreen extends StatefulWidget {
   final int initialTabIndex;
   final String selectedBook;
 
-  FocusScreen({required this.initialTabIndex, required this.selectedBook});
+  const FocusScreen({
+    Key? key,
+    required this.initialTabIndex,
+    required this.selectedBook,
+  }) : super(key: key);
 
-  _FocusScreenState createState() => _FocusScreenState();
+  @override
+  FocusScreenState createState() => FocusScreenState();
 }
 
-class _FocusScreenState extends State<FocusScreen>
+class FocusScreenState extends State<FocusScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   Timer? _timer;
   DateTime? _startTime;
   int _seconds = 0;
-  int Points = 0;
+  int points = 0;
   int? goalTime;
   int initialSeconds = 0;
   int numberOfBooks = 0;
@@ -36,6 +41,7 @@ class _FocusScreenState extends State<FocusScreen>
   bool _isPrivate = false;
   String? selectedBook;
   String? selectedBookId;
+  String lastPointDate = '0000-00-00';
   TextEditingController _quoteController = TextEditingController();
   TextEditingController _pageController = TextEditingController();
   List<Map<String, dynamic>> books = [];
@@ -44,6 +50,8 @@ class _FocusScreenState extends State<FocusScreen>
   List<BarChartGroupData> showingBarGroups = [];
   bool isLoading = true;
   double? maxYValue;
+  bool get isRunning => _isRunning;
+  bool _isWarningShown = false;
 
   @override
   void initState() {
@@ -102,7 +110,7 @@ class _FocusScreenState extends State<FocusScreen>
     SharedPreferences prefs = await SharedPreferences.getInstance();
     int savedPoints = prefs.getInt('Points') ?? 0;
     setState(() {
-      Points = savedPoints;
+      points = savedPoints;
     });
   }
 
@@ -341,7 +349,7 @@ class _FocusScreenState extends State<FocusScreen>
     }
   }
 
-  Future<DateTime?> _fetchLastPointDate() async {
+  Future<String?> _fetchLastPointDate() async {
     final prefs = await SharedPreferences.getInstance();
     String? userId = prefs.getString('User_ID');
 
@@ -361,7 +369,7 @@ class _FocusScreenState extends State<FocusScreen>
       print('Last Point Date String: $lastPointDateString');
 
       if (lastPointDateString != null && lastPointDateString.isNotEmpty) {
-        return DateTime.parse(lastPointDateString);
+        return lastPointDateString;
       }
     }
 
@@ -374,7 +382,7 @@ class _FocusScreenState extends State<FocusScreen>
     currentPoints += newPoints;
     await prefs.setInt('Points', currentPoints);
     setState(() {
-      Points = currentPoints;
+      points = currentPoints;
     });
   }
 
@@ -473,9 +481,11 @@ class _FocusScreenState extends State<FocusScreen>
 
       final now = DateTime.now().toIso8601String();
 
-      final pointDate = (lastPointDate?.year ?? 0) > 1970
-          ? lastPointDate?.toIso8601String()
-          : now;
+      // ปรับเงื่อนไขการกำหนดค่า pointDate
+      final pointDate =
+          (lastPointDate == null || lastPointDate.toString() == '0000-00-00')
+              ? now
+              : lastPointDate.toIso8601String();
 
       final response = await http.post(
         Uri.parse('$baseUrl/add_statistics.php'),
@@ -512,8 +522,7 @@ class _FocusScreenState extends State<FocusScreen>
           ),
           title: Text('สำเร็จ',
               style: GoogleFonts.kodchasan(color: Colors.pinkAccent)),
-          content: Text(message,
-              style: GoogleFonts.kodchasan(fontWeight: FontWeight.w500)),
+          content: Text(message, style: GoogleFonts.kodchasan()),
           actions: <Widget>[
             TextButton(
               child: Text('ตกลง',
@@ -541,8 +550,7 @@ class _FocusScreenState extends State<FocusScreen>
           ),
           title: Text('เกิดข้อผิดพลาด',
               style: GoogleFonts.kodchasan(color: Colors.pinkAccent)),
-          content: Text(errorMessage,
-              style: GoogleFonts.kodchasan(fontWeight: FontWeight.w500)),
+          content: Text(errorMessage, style: GoogleFonts.kodchasan()),
           actions: <Widget>[
             TextButton(
               child: Text('ตกลง',
@@ -642,21 +650,48 @@ class _FocusScreenState extends State<FocusScreen>
         int finalSeconds = _seconds;
         int timeElapsedInMinutes = finalSeconds ~/ 60;
         int totalPoints = timeElapsedInMinutes;
+        int bonusPoints = 0;
 
-        DateTime? lastPointDate = await _fetchLastPointDate();
+        String? lastPointDateString = await _fetchLastPointDate();
+        DateTime lastPointDate;
 
-        bool isLastPointDateValid =
-            lastPointDate != null && lastPointDate.year > 1970;
+        if (lastPointDateString == null ||
+            lastPointDateString == '0000-00-00') {
+          lastPointDate = DateTime.now();
+        } else {
+          try {
+            lastPointDate = DateTime.parse(lastPointDateString);
+          } catch (e) {
+            print('Error parsing last point date: $e');
+            lastPointDate = DateTime.now();
+          }
+        }
+
+        print('Last Point Date: $lastPointDate');
 
         if (goalTime != null && finalSeconds >= goalTime!) {
-          if (!isLastPointDateValid) {
-            totalPoints += 20;
-            lastPointDate = DateTime.now();
+          if (lastPointDateString == '0000-00-00') {
+            bonusPoints += 20;
             print('คะแนน +20');
           }
         }
 
+        totalPoints += bonusPoints;
+
+        if (selectedBookId != null) {
+          _showSummaryPopup(
+              totalPoints,
+              timeElapsedInMinutes,
+              finalSeconds % 60,
+              goalTime != null ? goalTime! ~/ 60 : 0,
+              lastPointDate,
+              bonusPoints);
+        } else {
+          print('ไม่สามารถเรียก _showSummaryPopup ได้');
+        }
+
         _saveEndTime(selectedBookId!, totalPoints, lastPointDate);
+
         _timer?.cancel();
 
         if (mounted) {
@@ -668,23 +703,29 @@ class _FocusScreenState extends State<FocusScreen>
         }
 
         Wakelock.disable();
-
-        if (mounted) {
-          _showSummaryPopup(totalPoints, timeElapsedInMinutes,
-              finalSeconds % 60, goalTime! ~/ 60, lastPointDate);
-        }
       } else {
         print('selectedBookId is null');
       }
     }
   }
 
-  void _confirmStopTimer() {
+  void _confirmStopTimer() async {
+    String? lastPointDateString = await _fetchLastPointDate();
+
+    int finalSeconds = _seconds;
+    int goalTime = this.goalTime ?? 0;
+
     String contentText;
 
-    // ตรวจสอบว่าเวลาครบตามเป้าหมายหรือยัง
-    if (_seconds < initialSeconds) {
-      contentText = 'ยังจับเวลาไม่ครบตามเป้าหมาย ต้องการหยุดจับเวลามั้ย?';
+    if (lastPointDateString == null ||
+        (lastPointDateString == '0000-00-00' && finalSeconds < goalTime)) {
+      if (goalTime > 0) {
+        contentText = 'ยังจับเวลาไม่ครบตามเป้าหมาย ต้องการหยุดจับเวลามั้ย?';
+      } else {
+        contentText = 'คุณแน่ใจหรือไม่ว่าต้องการหยุดเวลา?';
+      }
+    } else if (finalSeconds >= goalTime && goalTime > 0) {
+      contentText = 'คุณแน่ใจหรือไม่ว่าต้องการหยุดเวลา?';
     } else {
       contentText = 'คุณแน่ใจหรือไม่ว่าต้องการหยุดเวลา?';
     }
@@ -694,7 +735,7 @@ class _FocusScreenState extends State<FocusScreen>
       builder: (BuildContext context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(20),
             side: BorderSide(color: Colors.pinkAccent, width: 2),
           ),
           title: Text(
@@ -738,13 +779,9 @@ class _FocusScreenState extends State<FocusScreen>
       int timeElapsedInMinutes,
       int timeElapsedInSeconds,
       int targetTimeInMinutes,
-      DateTime? lastPointDate) {
+      DateTime? lastPointDate,
+      int bonusPoints) {
     TextEditingController _pageController = TextEditingController();
-    int bonusPoints = 0;
-
-    if (timeElapsedInMinutes >= targetTimeInMinutes) {
-      bonusPoints = 20;
-    }
 
     showDialog(
       context: context,
@@ -759,8 +796,7 @@ class _FocusScreenState extends State<FocusScreen>
           content: SingleChildScrollView(
             child: ListBody(
               children: <Widget>[
-                if (bonusPoints > 0 ||
-                    (lastPointDate != null && lastPointDate.year > 1970))
+                if (bonusPoints > 0)
                   Text(
                     'ยินดีด้วย🎉\nคุณทำตามเป้าหมายการอ่านได้สำเร็จ!\nรับโบนัสเพิ่ม $bonusPoints คะแนน!',
                     style: GoogleFonts.kodchasan(
@@ -833,6 +869,53 @@ class _FocusScreenState extends State<FocusScreen>
         );
       },
     );
+  }
+
+  void _selectTab(int index) {}
+
+  void _onTabSelected(int index) {
+    if (_isRunning && !_isWarningShown) {
+      _showStopTimerWarning();
+    } else {
+      _selectTab(index);
+    }
+  }
+
+  void _showStopTimerWarning() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(
+            'เตือน!!!',
+            style: GoogleFonts.kodchasan(
+                color: Colors.pinkAccent, fontWeight: FontWeight.w500),
+          ),
+          content: Text(
+            'จับเวลากำลังทำงานอยู่ กรุณาหยุดจับเวลาและบันทึกข้อมูลก่อนทำรายการอื่น',
+            style: GoogleFonts.kodchasan(),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _isWarningShown = false;
+              },
+              child: Text(
+                'ตกลง',
+                style: GoogleFonts.kodchasan(color: Colors.pinkAccent),
+              ),
+            ),
+          ],
+          shape: RoundedRectangleBorder(
+            side: BorderSide(color: Colors.pinkAccent, width: 2),
+            borderRadius: BorderRadius.circular(20),
+          ),
+        );
+      },
+    );
+
+    _isWarningShown = true;
   }
 
   void _showLoginAlert() {
@@ -918,7 +1001,6 @@ class _FocusScreenState extends State<FocusScreen>
       fontSize: 14,
     );
 
-    // ดึงชื่อวันจากเซิร์ฟเวอร์โดยตรง
     if (value.toInt() < data.length) {
       return SideTitleWidget(
         axisSide: meta.axisSide,
@@ -979,16 +1061,25 @@ class _FocusScreenState extends State<FocusScreen>
           ),
           indicatorPadding: EdgeInsets.symmetric(vertical: 8.0),
           tabs: [
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: 8.0),
-              child: Container(
-                height: 30.0,
-                alignment: Alignment.center,
-                child: Text(
-                  'สถิติประจำสัปดาห์',
-                  style: GoogleFonts.kodchasan(
-                    fontSize: 14.0,
-                    fontWeight: FontWeight.w500,
+            GestureDetector(
+              onTap: () {
+                if (_isRunning) {
+                  _showStopTimerWarning();
+                } else {
+                  _tabController.index = 0;
+                }
+              },
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 8.0),
+                child: Container(
+                  height: 30.0,
+                  alignment: Alignment.center,
+                  child: Text(
+                    'สถิติประจำสัปดาห์',
+                    style: GoogleFonts.kodchasan(
+                      fontSize: 14.0,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ),
