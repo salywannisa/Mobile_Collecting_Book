@@ -59,4 +59,3 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-//ยังแสดงข้อความยินดีด้วย เมื่อได้คะแนนพิเศษแล้ว

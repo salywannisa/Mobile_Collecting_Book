@@ -226,7 +226,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                     onTap: () {
-                      Navigator.push(
+                      Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(builder: (context) => LoginScreen()),
                       ).then((value) {

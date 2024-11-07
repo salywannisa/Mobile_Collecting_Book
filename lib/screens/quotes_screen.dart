@@ -577,7 +577,6 @@ class _QuotesScreenState extends State<QuotesScreen>
       'Quote_Status': isPrivate ? '1' : '2',
     });
 
-    // ตรวจสอบสถานะของการตอบกลับจากเซิร์ฟเวอร์
     if (response.statusCode == 200) {
       final responseData = json.decode(response.body);
       if (responseData['success']) {
